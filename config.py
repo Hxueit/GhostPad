@@ -16,8 +16,7 @@ class Config:
         if not self.config_file.exists():
             self.create_default_config()
     
-    def create_default_config(self):
-        """Create default configuration"""
+    def create_default_config(self): #Create default configuration
         self.config['OpenAI'] = {
             'api_key': '',
             'base_url': 'https://api.openai.com/v1/',
@@ -41,7 +40,9 @@ class Config:
             'send_keys': 'ctrl+enter',
             'send_enabled': 'true',
             'terminate_keys': 'ctrl+alt',
-            'terminate_enabled': 'true'
+            'terminate_enabled': 'true',
+            'exit_keys': 'ctrl+alt+backspace',
+            'exit_enabled': 'true'
         }
         self.save_config()
     
@@ -151,3 +152,19 @@ class Config:
     def set_terminate_hotkey_enabled(self, enabled):
         """Set terminate hotkey enabled state"""
         self.set('Hotkey', 'terminate_enabled', str(enabled).lower())
+    
+    def get_exit_hotkey(self):
+        """Get exit hotkey combination"""
+        return self.get('Hotkey', 'exit_keys', 'ctrl+backspace')
+    
+    def set_exit_hotkey(self, keys):
+        """Set exit hotkey combination"""
+        self.set('Hotkey', 'exit_keys', keys)
+    
+    def is_exit_hotkey_enabled(self):
+        """Check if exit hotkey is enabled"""
+        return self.get('Hotkey', 'exit_enabled', 'true').lower() == 'true'
+    
+    def set_exit_hotkey_enabled(self, enabled):
+        """Set exit hotkey enabled state"""
+        self.set('Hotkey', 'exit_enabled', str(enabled).lower())

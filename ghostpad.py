@@ -11,7 +11,7 @@ from config import Config
 from api_client import OpenAIClient
 
 def resource_path(rel_path):
-    """Get absolute path to resource, works for dev and for PyInstaller"""
+    """Get absolute path to resource, for PyInstaller"""
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, rel_path)
     return os.path.join(os.path.abspath("."), rel_path)
@@ -51,6 +51,7 @@ class GhostPad:
         self.toggle_hotkey_combo = set()
         self.send_hotkey_combo = set()
         self.terminate_hotkey_combo = set()
+        self.exit_hotkey_combo = set()
         
         self.setup_window()
         self.create_widgets()
@@ -92,7 +93,8 @@ class GhostPad:
             borderwidth=0,
             highlightthickness=0,
             wrap=tk.WORD,
-            padx=8,
+            insertwidth=2,
+            insertofftime=0,
             pady=8
         )
         self.text_widget.pack(fill=tk.BOTH, expand=True)
@@ -104,7 +106,7 @@ class GhostPad:
         )
         self.loading_frame.place(relx=1.0, rely=1.0, anchor='se', x=-5, y=-5)
         
-        # Create three loading squares
+        # Three loading squares
         self.loading_squares = []
         for i in range(3):
             square = tk.Label(
@@ -162,11 +164,17 @@ class GhostPad:
             self.terminate_hotkey_combo = self.parse_hotkey(self.config.get_terminate_hotkey())
         else:
             self.terminate_hotkey_combo = set()
+            
+        if self.config.is_exit_hotkey_enabled():
+            self.exit_hotkey_combo = self.parse_hotkey(self.config.get_exit_hotkey())
+        else:
+            self.exit_hotkey_combo = set()
         
         # Start listener if any hotkeys are enabled
         if (self.config.is_toggle_hotkey_enabled() or 
             self.config.is_send_hotkey_enabled() or 
-            self.config.is_terminate_hotkey_enabled()):
+            self.config.is_terminate_hotkey_enabled() or
+            self.config.is_exit_hotkey_enabled()):
             self.hotkey_listener = keyboard.Listener(
                 on_press=self.on_hotkey_press,
                 on_release=self.on_hotkey_release
@@ -196,6 +204,8 @@ class GhostPad:
                 keys.add(Key.enter)
             elif part == 'tab':
                 keys.add(Key.tab)
+            elif part == 'backspace':
+                keys.add(Key.backspace)
             elif len(part) == 1:
                 keys.add(KeyCode.from_char(part))
             elif part == 'x':
@@ -225,6 +235,10 @@ class GhostPad:
                 self.check_hotkey_match(self.terminate_hotkey_combo) and 
                 self.is_waiting):
                 self.root.after(0, self.terminate_current_request)
+            
+            # Check exit hotkey
+            if self.exit_hotkey_combo and self.check_hotkey_match(self.exit_hotkey_combo):
+                self.root.after(0, self.on_closing)
                 
         except Exception as e:
             pass  # Ignore hotkey errors
@@ -848,7 +862,7 @@ class GhostPad:
         """Show dialog to set all hotkeys"""
         hotkey_window = tk.Toplevel(self.root)
         hotkey_window.title("Hotkey Settings")
-        hotkey_window.geometry("600x550")
+        hotkey_window.geometry("400x400")
         hotkey_window.configure(bg='white')
         hotkey_window.attributes('-topmost', True)
         hotkey_window.transient(self.root)
@@ -946,6 +960,28 @@ class GhostPad:
         )
         terminate_enabled_check.pack(anchor='w', pady=(5, 0))
         
+        # Exit hotkey section
+        exit_frame = tk.Frame(main_frame, bg='white')
+        exit_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(exit_frame, text="Exit Application:", font=('Arial', 10, 'bold'), bg='white').pack(anchor='w')
+        current_exit = self.config.get_exit_hotkey()
+        tk.Label(exit_frame, text=f"Current: {current_exit} (completely closes the application)", font=('Arial', 9), bg='white', fg='gray').pack(anchor='w')
+        
+        exit_entry = tk.Entry(exit_frame, font=('Arial', 10), width=30)
+        exit_entry.pack(anchor='w', pady=(5, 0))
+        exit_entry.insert(0, current_exit)
+        
+        exit_enabled_var = tk.BooleanVar(value=self.config.is_exit_hotkey_enabled())
+        exit_enabled_check = tk.Checkbutton(
+            exit_frame, 
+            text="Enabled", 
+            variable=exit_enabled_var, 
+            bg='white', 
+            font=('Arial', 9)
+        )
+        exit_enabled_check.pack(anchor='w', pady=(5, 0))
+        
         # Buttons
         button_frame = tk.Frame(main_frame, bg='white')
         button_frame.pack(fill=tk.X, pady=(20, 0))
@@ -978,6 +1014,15 @@ class GhostPad:
                 messagebox.showerror("Error", f"Invalid terminate hotkey: {terminate_hotkey}")
                 return
             
+            # Validate and save exit hotkey
+            exit_hotkey = exit_entry.get().strip().lower()
+            if exit_hotkey and self.validate_hotkey(exit_hotkey):
+                self.config.set_exit_hotkey(exit_hotkey)
+                self.config.set_exit_hotkey_enabled(exit_enabled_var.get())
+            elif exit_hotkey:
+                messagebox.showerror("Error", f"Invalid exit hotkey: {exit_hotkey}")
+                return
+            
             # Restart hotkey listener with new settings
             self.setup_hotkey()
             hotkey_window.destroy()
@@ -998,7 +1043,8 @@ class GhostPad:
         valid_keys = ['ctrl', 'alt', 'shift', 'esc', 'space', 'enter', 'tab'] + \
                     [chr(i) for i in range(ord('a'), ord('z')+1)] + \
                     [str(i) for i in range(10)] + \
-                    [f'f{i}' for i in range(1, 13)]
+                    [f'f{i}' for i in range(1, 13)] + \
+                    ['backspace']
         
         invalid_keys = [part for part in parts if part not in valid_keys]
         return len(invalid_keys) == 0
@@ -1130,11 +1176,24 @@ class GhostPad:
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=text_widget.yview)
         
+        # Configure text tags for markdown-style formatting
+        text_widget.tag_configure("h1", font=('Arial', 16, 'bold'), foreground='#1a1a1a', spacing1=10, spacing3=5)
+        text_widget.tag_configure("h2", font=('Arial', 14, 'bold'), foreground='#333333', spacing1=8, spacing3=4)
+        text_widget.tag_configure("h3", font=('Arial', 12, 'bold'), foreground='#555555', spacing1=6, spacing3=3)
+        text_widget.tag_configure("bold", font=('Arial', 10, 'bold'))
+        text_widget.tag_configure("italic", font=('Arial', 10, 'italic'))
+        text_widget.tag_configure("code", font=('Courier New', 9), background='#f5f5f5', foreground='#d63384')
+        text_widget.tag_configure("code_block", font=('Courier New', 9), background='#f8f9fa', foreground='#212529', lmargin1=20, lmargin2=20, spacing1=5, spacing3=5)
+        text_widget.tag_configure("bullet", lmargin1=20, lmargin2=40)
+        text_widget.tag_configure("numbered", lmargin1=20, lmargin2=40)
+        text_widget.tag_configure("quote", lmargin1=20, lmargin2=20, background='#f8f9fa', foreground='#6c757d', font=('Arial', 10, 'italic'))
+        text_widget.tag_configure("hr", background='#dee2e6', font=('Arial', 1))
+        
         # Load and display README content
         try:
             with open(resource_path("README.md"), 'r', encoding='utf-8') as f:
                 readme_content = f.read()
-            text_widget.insert(1.0, readme_content)
+            self.render_markdown(text_widget, readme_content)
         except FileNotFoundError:
             text_widget.insert(1.0, "README.md file not found.")
         except Exception as e:
@@ -1148,6 +1207,136 @@ class GhostPad:
         x = (help_window.winfo_screenwidth() // 2) - (800 // 2)
         y = (help_window.winfo_screenheight() // 2) - (600 // 2)
         help_window.geometry(f"800x600+{x}+{y}")
+    
+    def render_markdown(self, text_widget, markdown_content):
+        """Render markdown content with basic formatting"""
+        import re
+        
+        lines = markdown_content.split('\n')
+        in_code_block = False
+        code_block_content = []
+        
+        for line in lines:
+            # Handle code blocks
+            if line.strip().startswith('```'):
+                if in_code_block:
+                    # End of code block
+                    if code_block_content:
+                        text_widget.insert(tk.END, '\n'.join(code_block_content) + '\n', 'code_block')
+                        code_block_content = []
+                    in_code_block = False
+                else:
+                    # Start of code block
+                    in_code_block = True
+                continue
+            
+            if in_code_block:
+                code_block_content.append(line)
+                continue
+            
+            # Handle headers
+            if line.startswith('# '):
+                text_widget.insert(tk.END, line[2:] + '\n', 'h1')
+            elif line.startswith('## '):
+                text_widget.insert(tk.END, line[3:] + '\n', 'h2')
+            elif line.startswith('### '):
+                text_widget.insert(tk.END, line[4:] + '\n', 'h3')
+            # Handle horizontal rules
+            elif line.strip() == '---':
+                text_widget.insert(tk.END, '─' * 60 + '\n', 'hr')
+            # Handle bullet points
+            elif line.strip().startswith('* ') or line.strip().startswith('- '):
+                bullet_text = line.strip()[2:]
+                text_widget.insert(tk.END, f"• {bullet_text}\n", 'bullet')
+            # Handle numbered lists
+            elif re.match(r'^\d+\.\s', line.strip()):
+                text_widget.insert(tk.END, line.strip() + '\n', 'numbered')
+            # Handle blockquotes
+            elif line.strip().startswith('> '):
+                quote_text = line.strip()[2:]
+                text_widget.insert(tk.END, f"  {quote_text}\n", 'quote')
+            # Handle regular text with inline formatting
+            else:
+                self.render_inline_markdown(text_widget, line + '\n')
+    
+    def render_inline_markdown(self, text_widget, line):
+        """Render inline markdown formatting like bold, italic, and code"""
+        import re
+        
+        # Find all inline code first (to avoid processing markdown inside code)
+        code_pattern = r'`([^`]+)`'
+        parts = []
+        last_end = 0
+        
+        for match in re.finditer(code_pattern, line):
+            # Add text before code
+            if match.start() > last_end:
+                parts.append(('text', line[last_end:match.start()]))
+            # Add code
+            parts.append(('code', match.group(1)))
+            last_end = match.end()
+        
+        # Add remaining text
+        if last_end < len(line):
+            parts.append(('text', line[last_end:]))
+        
+        # Process each part
+        for part_type, content in parts:
+            if part_type == 'code':
+                text_widget.insert(tk.END, content, 'code')
+            else:
+                # Process bold and italic in regular text
+                self.render_text_formatting(text_widget, content)
+    
+    def render_text_formatting(self, text_widget, text):
+        """Render bold and italic formatting"""
+        import re
+        
+        # Process bold (**text**)
+        bold_pattern = r'\*\*([^*]+)\*\*'
+        parts = []
+        last_end = 0
+        
+        for match in re.finditer(bold_pattern, text):
+            # Add text before bold
+            if match.start() > last_end:
+                parts.append(('text', text[last_end:match.start()]))
+            # Add bold text
+            parts.append(('bold', match.group(1)))
+            last_end = match.end()
+        
+        # Add remaining text
+        if last_end < len(text):
+            parts.append(('text', text[last_end:]))
+        
+        # Process each part for italic
+        for part_type, content in parts:
+            if part_type == 'bold':
+                text_widget.insert(tk.END, content, 'bold')
+            else:
+                # Process italic (*text*)
+                italic_pattern = r'\*([^*]+)\*'
+                italic_parts = []
+                last_end = 0
+                
+                for match in re.finditer(italic_pattern, content):
+                    # Add text before italic
+                    if match.start() > last_end:
+                        italic_parts.append(('text', content[last_end:match.start()]))
+                    # Add italic text
+                    italic_parts.append(('italic', match.group(1)))
+                    last_end = match.end()
+                
+                # Add remaining text
+                if last_end < len(content):
+                    italic_parts.append(('text', content[last_end:]))
+                
+                # Insert each italic part
+                for italic_type, italic_content in italic_parts:
+                    if italic_type == 'italic':
+                        text_widget.insert(tk.END, italic_content, 'italic')
+                    else:
+                        text_widget.insert(tk.END, italic_content)
     
     def hide_window(self):
         """Hide the window"""

@@ -1,18 +1,18 @@
 # GhostPad
 
-A tiny subtle LLM window. Uses an API (OpenAI-compatible).
+A tiny, minimalist AI chat window. Requires an API (OpenAI-compatible).
 
 ---
 
 ## Features
 
-* Small white text box, no border
-* Always on top
-* Click center to type
-* Default Ctrl+Enter to send
-* Right-click for settings
-* Hidden from taskbar / Alt+Tab
-* Drag edges to move/resize (long-press near the edge, then drag)
+- Small white text box, no border
+- Always on top
+- Click center to type
+- Default Ctrl+Enter to send
+- Right-click for settings
+- Hidden from taskbar / Alt+Tab
+- Drag edges to move/resize (long-press near the edge, then drag)
 
 ---
 
@@ -35,6 +35,7 @@ A tiny subtle LLM window. Uses an API (OpenAI-compatible).
    ```bash
    python ghostpad.py
    ```
+
 2. Right-click → **LLM Settings** → set your API key, base URL, and model
 3. Click center → type → **Ctrl+Enter** to send
 
@@ -42,42 +43,42 @@ A tiny subtle LLM window. Uses an API (OpenAI-compatible).
 
 ## Right-Click Menu
 
-* **LLM Settings** — Configure your LLM provider: API key, base URL (OpenAI-style), model name, and basic params (e.g., temperature, max tokens). Works with OpenAI or any service that follows the same API format.
+- **LLM Settings** — Configure your LLM provider: API key, base URL (OpenAI-style), model name, and basic params (e.g., temperature, max tokens). Works with OpenAI or any service that follows the same API format.
 
-* **Set Hotkey** — Set global shortcuts (e.g., show/hide window). Enter a key combo and save.
+- **Set Hotkey** — Set global shortcuts (e.g., show/hide window). Save after edits.
 
-* **Start New Chat** — Clear the current conversation and start a blank one. *Note: history for this session will be cleared.*
+- **Start New Chat** — Clear the current conversation and start a blank one. _Note: history for this session will be cleared._
 
-* **History** — View the transcript for the current session.
+- **History** — View the transcript for the current session.
 
-* **Help** — Opens this document.
+- **Help** — Opens this document.
 
-* **Hide** — Hides the text window. Use the configured show/hide hotkey to bring it back.
+- **Hide** — Hides the text window. Use the configured show/hide hotkey to bring it back.
 
-* **Exit** — Exit. *History will be cleared*
+- **Exit** — Exit. _History will be cleared_
 
 ---
 
 ## Troubleshoot
 
-**No response**
+**No response / Error after entering**
 
-* Check your internet connection
-* Check that your API key, base URL, and model are set correctly
+- Check your internet connection
+- Check that your API key, base URL, and model are set correctly
 
-**Window won’t move**
+**Window won’t move / resize**
 
-* Make sure you are long-pressing near the window border (not the center)
-* Hold for \~0.5s, then drag
+- Make sure you are long-pressing near the window border (not the center)
+- Hold for \~0.5s, then drag
 
 **Configuration edits are not saved**
 
-* Click **Save** after modifying settings (you may need to manually enlarge the settings window to see the button)
+- Click **Save** after modifying settings (you may need to scroll down or manually enlarge the settings window to see the button)
 
 ---
 
 ## Privacy
 
-* All settings from the LLM Settings tab are stored locally at:
+- All settings from the LLM Settings tab are stored locally at:
   `C:\Users\<YourUsername>\.ghostpad\config.ini`
-* No telemetry is collected by GhostPad; requests are sent only to your configured LLM provider.
+- No telemetry is collected; requests are sent only to your configured LLM provider.
