@@ -72,7 +72,7 @@ class GhostPad:
         # Always on top
         self.root.attributes('-topmost', True)
         
-        # Windows-specific settings
+        # win32 setting
         if sys.platform == "win32":
             try:
                 self.root.attributes('-toolwindow', True)  # Hide from taskbar
@@ -106,7 +106,7 @@ class GhostPad:
         )
         self.loading_frame.place(relx=1.0, rely=1.0, anchor='se', x=-5, y=-5)
         
-        # Three loading squares
+        # Load box
         self.loading_squares = []
         for i in range(3):
             square = tk.Label(
