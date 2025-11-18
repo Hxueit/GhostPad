@@ -1,14 +1,13 @@
 import openai
 import threading
-import time
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Dict, Any
 
 class OpenAIClient:
     def __init__(self, config):
         self.config = config
-        self.conversation_history = []
-        self.current_request_thread = None
-        self.terminate_request = False
+        self.conversation_history: List[Dict[str, str]] = []
+        self.current_request_thread: Optional[threading.Thread] = None
+        self.terminate_request: bool = False
         self.update_config()
     
     def update_config(self):
@@ -50,10 +49,8 @@ class OpenAIClient:
     def terminate_current_request(self):
         """Terminate current API request"""
         self.terminate_request = True
-        if self.current_request_thread and self.current_request_thread.is_alive():
-            # Note: We can't actually kill the thread, but we set the flag
-            # The thread will check this flag and exit gracefully
-            pass
+        # Fixed: can't actually kill the thread, but we set the flag
+        # The thread will check this flag and exit gracefully
     
     def send_message_async(self, message: str, callback: Callable[[str], None], error_callback: Callable[[str], None]):
         """Send message to OpenAI API asynchronously"""
@@ -89,7 +86,7 @@ class OpenAIClient:
                 response = openai.chat.completions.create(
                     model=self.config.get_model(),
                     messages=self.conversation_history,
-                    max_tokens=int(self.config.get('OpenAI', 'max_tokens', '150')),
+                    max_tokens=int(self.config.get('OpenAI', 'max_tokens', '4096')),
                     temperature=float(self.config.get('OpenAI', 'temperature', '1.0')),
                     top_p=float(self.config.get('OpenAI', 'top_p', '1.0')),
                     presence_penalty=float(self.config.get('OpenAI', 'presence_penalty', '0.0')),

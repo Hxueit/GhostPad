@@ -1,5 +1,4 @@
 import configparser
-import os
 from pathlib import Path
 
 class Config:
@@ -16,7 +15,8 @@ class Config:
         if not self.config_file.exists():
             self.create_default_config()
     
-    def create_default_config(self): #Create default configuration
+    def create_default_config(self):
+        """Create default configuration"""
         self.config['OpenAI'] = {
             'api_key': '',
             'base_url': 'https://api.openai.com/v1/',
@@ -48,12 +48,21 @@ class Config:
     
     def load_config(self):
         """Load configuration from file"""
-        self.config.read(self.config_file)
+        try:
+            self.config.read(self.config_file)
+        except (IOError, OSError, configparser.Error) as e:
+            # If config file is corrupted, create a new default one
+            print(f"Warning: Failed to load config file: {e}. Creating default config.")
+            self.create_default_config()
     
     def save_config(self):
         """Save configuration to file"""
-        with open(self.config_file, 'w') as configfile:
-            self.config.write(configfile)
+        try:
+            with open(self.config_file, 'w') as configfile:
+                self.config.write(configfile)
+        except (IOError, OSError) as e:
+            print(f"Error: Failed to save config file: {e}")
+            raise
     
     def get(self, section, key, fallback=None):
         """Get configuration value"""

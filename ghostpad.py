@@ -1,16 +1,26 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog
-import threading
-import time
+from tkinter import messagebox
 import sys
 import os
+from typing import Optional, Set
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
 
 from config import Config
 from api_client import OpenAIClient
 
-def resource_path(rel_path):
+#Per aspera ad astra
+
+# Constants
+BORDER_THRESHOLD = 12  # Pixels from edge to trigger drag/resize
+LONG_PRESS_DELAY_MS = 350  # Milliseconds to wait before activating long press
+DRAG_THRESHOLD = 20  # Pixels of movement to cancel long press
+MIN_WINDOW_WIDTH = 200  # Minimum window width in pixels
+MIN_WINDOW_HEIGHT = 100  # Minimum window height in pixels
+ERROR_DISPLAY_DURATION_MS = 3000  # How long to show error messages
+TERMINATION_DISPLAY_DURATION_MS = 2000  # How long to show termination messages
+
+def resource_path(rel_path: str) -> str:
     """Get absolute path to resource, for PyInstaller"""
     if hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, rel_path)
@@ -58,9 +68,26 @@ class GhostPad:
         self.bind_events()
         self.setup_hotkey()
     
+    def set_window_icon(self, window):
+        """Set icon for a window (works for both Tk and Toplevel)"""
+        try:
+            icon_path = resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                window.iconbitmap(icon_path)
+        except Exception:
+            pass
+    
     def setup_window(self):
         """Configure the main window"""
         self.root.title("GhostPad")
+        
+        # Set window icon
+        try:
+            icon_path = resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+        except Exception:
+            pass
         
         # Remove window decorations
         self.root.overrideredirect(True)
@@ -72,11 +99,12 @@ class GhostPad:
         # Always on top
         self.root.attributes('-topmost', True)
         
-        # win32 setting
+        # Windows-specific settings
         if sys.platform == "win32":
             try:
                 self.root.attributes('-toolwindow', True)  # Hide from taskbar
-            except:
+            except tk.TclError:
+                # Apparently some Windows versions may not support this attribute
                 pass
         
         # White background
@@ -106,7 +134,7 @@ class GhostPad:
         )
         self.loading_frame.place(relx=1.0, rely=1.0, anchor='se', x=-5, y=-5)
         
-        # Load box
+        # Three loading squares
         self.loading_squares = []
         for i in range(3):
             square = tk.Label(
@@ -181,39 +209,33 @@ class GhostPad:
             )
             self.hotkey_listener.start()
     
-    def parse_hotkey(self, hotkey_str):
+    def parse_hotkey(self, hotkey_str: str) -> Set:
         """Parse hotkey string into set of keys"""
-        keys = set()
+        keys: Set = set()
         parts = [part.strip().lower() for part in hotkey_str.split('+')]
         
+        # Mapping of special keys
+        special_keys = {
+            'ctrl': (Key.ctrl_l, Key.ctrl_r),
+            'alt': (Key.alt_l, Key.alt_r),
+            'shift': (Key.shift_l, Key.shift_r),
+            'esc': (Key.esc,),
+            'space': (Key.space,),
+            'enter': (Key.enter,),
+            'tab': (Key.tab,),
+            'backspace': (Key.backspace,),
+        }
+        
         for part in parts:
-            if part == 'ctrl':
-                keys.add(Key.ctrl_l)
-                keys.add(Key.ctrl_r)
-            elif part == 'alt':
-                keys.add(Key.alt_l)
-                keys.add(Key.alt_r)
-            elif part == 'shift':
-                keys.add(Key.shift_l)
-                keys.add(Key.shift_r)
-            elif part == 'esc':
-                keys.add(Key.esc)
-            elif part == 'space':
-                keys.add(Key.space)
-            elif part == 'enter':
-                keys.add(Key.enter)
-            elif part == 'tab':
-                keys.add(Key.tab)
-            elif part == 'backspace':
-                keys.add(Key.backspace)
+            if part in special_keys:
+                # Add all variants for modifier keys
+                for key in special_keys[part]:
+                    keys.add(key)
             elif len(part) == 1:
+                # Single character key
                 keys.add(KeyCode.from_char(part))
-            elif part == 'x':
-                keys.add(KeyCode.from_char('x'))
-            elif part == 'h':
-                keys.add(KeyCode.from_char('h'))
-            elif part == 'g':
-                keys.add(KeyCode.from_char('g'))
+            # Note: f1-f12 keys are handled in validate_hotkey but not parsed here
+            # This is a limitation that could be improved in the future
         
         return keys
     
@@ -241,9 +263,11 @@ class GhostPad:
                 self.root.after(0, self.on_closing)
                 
         except Exception as e:
-            pass  # Ignore hotkey errors
+            # Silently ignore hotkey errors to prevent UI blocking
+            # Hotkey listener errors are non-critical
+            pass
     
-    def check_hotkey_match(self, target_keys):
+    def check_hotkey_match(self, target_keys: Set) -> bool:
         """Check if current pressed keys match target hotkey combination"""
         if not target_keys:
             return False
@@ -284,7 +308,8 @@ class GhostPad:
         try:
             self.pressed_keys.discard(key)
         except Exception as e:
-            pass  # Ignore hotkey errors
+            # Silently ignore hotkey errors to prevent UI blocking
+            pass
     
     def toggle_window(self):
         """Toggle window visibility"""
@@ -317,7 +342,7 @@ class GhostPad:
         
         self.initial_click_x = x
         self.initial_click_y = y
-        self.long_press_timer = self.root.after(350, lambda: self.activate_long_press(x, y))
+        self.long_press_timer = self.root.after(LONG_PRESS_DELAY_MS, lambda: self.activate_long_press(x, y))
     
     def activate_long_press(self, x, y):
         """Activate long press mode"""
@@ -347,7 +372,7 @@ class GhostPad:
         x, y = event.x, event.y
         width = self.text_widget.winfo_width()
         height = self.text_widget.winfo_height()
-        border_threshold = 12
+        border_threshold = BORDER_THRESHOLD
         
         # Check if we're near a corner (for resizing)
         if ((x < border_threshold and y < border_threshold) or 
@@ -375,7 +400,7 @@ class GhostPad:
         if self.long_press_timer and not self.long_press_active:
             dx = abs(event.x_root - self.drag_start_x)
             dy = abs(event.y_root - self.drag_start_y)
-            if dx > 20 or dy > 20:
+            if dx > DRAG_THRESHOLD or dy > DRAG_THRESHOLD:
                 self.cancel_long_press_timer()
                 return
         
@@ -413,7 +438,7 @@ class GhostPad:
         x, y = event.x, event.y
         width = self.text_widget.winfo_width()
         height = self.text_widget.winfo_height()
-        border_threshold = 12
+        border_threshold = BORDER_THRESHOLD
         
         # If click is in central area (not near borders), allow normal text selection
         if (x >= border_threshold and x <= width - border_threshold and 
@@ -422,12 +447,6 @@ class GhostPad:
             self.cancel_long_press_timer()
             self.text_widget.focus_set()
             return
-        
-        # Get position relative to text widget
-        x, y = event.x, event.y
-        width = self.text_widget.winfo_width()
-        height = self.text_widget.winfo_height()
-        border_threshold = 12
         
         # Check if we're near a corner for resizing
         cursor, resize_mode = None, None
@@ -475,24 +494,24 @@ class GhostPad:
         
         # Handle corner resizing
         if self.resize_mode == 'se':
-            new_width = max(200, current_width + dx)
-            new_height = max(100, current_height + dy)
+            new_width = max(MIN_WINDOW_WIDTH, current_width + dx)
+            new_height = max(MIN_WINDOW_HEIGHT, current_height + dy)
         elif self.resize_mode == 'sw':
-            new_width = max(200, current_width - dx)
-            new_height = max(100, current_height + dy)
-            if new_width > 200:
+            new_width = max(MIN_WINDOW_WIDTH, current_width - dx)
+            new_height = max(MIN_WINDOW_HEIGHT, current_height + dy)
+            if new_width > MIN_WINDOW_WIDTH:
                 new_x = current_x + dx
         elif self.resize_mode == 'ne':
-            new_width = max(200, current_width + dx)
-            new_height = max(100, current_height - dy)
-            if new_height > 100:
+            new_width = max(MIN_WINDOW_WIDTH, current_width + dx)
+            new_height = max(MIN_WINDOW_HEIGHT, current_height - dy)
+            if new_height > MIN_WINDOW_HEIGHT:
                 new_y = current_y + dy
         elif self.resize_mode == 'nw':
-            new_width = max(200, current_width - dx)
-            new_height = max(100, current_height - dy)
-            if new_width > 200:
+            new_width = max(MIN_WINDOW_WIDTH, current_width - dx)
+            new_height = max(MIN_WINDOW_HEIGHT, current_height - dy)
+            if new_width > MIN_WINDOW_WIDTH:
                 new_x = current_x + dx
-            if new_height > 100:
+            if new_height > MIN_WINDOW_HEIGHT:
                 new_y = current_y + dy
         
         self.root.geometry(f"{new_width}x{new_height}+{new_x}+{new_y}")
@@ -557,8 +576,8 @@ class GhostPad:
         self.text_widget.configure(fg='red')
         self.is_waiting = False
         
-        # After 3 seconds, restore original text or show placeholder
-        self.root.after(3000, self._restore_text_after_error)
+        # After error display duration, restore original text or show placeholder
+        self.root.after(ERROR_DISPLAY_DURATION_MS, self._restore_text_after_error)
     
     def _restore_text_after_error(self):
         """Restore text after showing error"""
@@ -584,8 +603,8 @@ class GhostPad:
             # Reset waiting state
             self.is_waiting = False
             
-            # After 2 seconds, restore original text or clear
-            self.root.after(2000, self._restore_text_after_termination)
+            # After termination display duration, restore original text or clear
+            self.root.after(TERMINATION_DISPLAY_DURATION_MS, self._restore_text_after_termination)
     
     def _restore_text_after_termination(self):
         """Restore text after showing termination message"""
@@ -618,6 +637,7 @@ class GhostPad:
     def show_llm_settings(self):
         """Show LLM settings window"""
         settings_window = tk.Toplevel(self.root)
+        self.set_window_icon(settings_window)
         settings_window.title("Settings")
         settings_window.geometry("500x600")
         settings_window.configure(bg='white')
@@ -640,10 +660,12 @@ class GhostPad:
         scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg='white')
         
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # Optimize scrollregion update to prevent lag
+        def update_scrollregion(event=None):
+            canvas.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.after_idle(update_scrollregion))
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
@@ -855,12 +877,20 @@ class GhostPad:
         canvas.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux
         canvas.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))   # Linux
         
-        # Make sure canvas has focus for scrolling
-        canvas.focus_set()
+        # Also bind to scrollable_frame and all child widgets for better scrolling
+        def bind_to_mousewheel(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+            for child in widget.winfo_children():
+                bind_to_mousewheel(child)
+        
+        bind_to_mousewheel(scrollable_frame)
     
     def set_hotkeys(self):
         """Show dialog to set all hotkeys"""
         hotkey_window = tk.Toplevel(self.root)
+        self.set_window_icon(hotkey_window)
         hotkey_window.title("Hotkey Settings")
         hotkey_window.geometry("400x400")
         hotkey_window.configure(bg='white')
@@ -874,8 +904,31 @@ class GhostPad:
         y = (hotkey_window.winfo_screenheight() // 2) - (275)
         hotkey_window.geometry(f"600x550+{x}+{y}")
         
-        # Main frame
-        main_frame = tk.Frame(hotkey_window, bg='white', padx=20, pady=20)
+        # Create main container frame
+        container = tk.Frame(hotkey_window, bg='white')
+        container.pack(fill=tk.BOTH, expand=True)
+        
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(container, bg='white', highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='white')
+        
+        # Optimize scrollregion update to prevent lag
+        def update_scrollregion(event=None):
+            canvas.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.after_idle(update_scrollregion))
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Main frame (now inside scrollable_frame)
+        main_frame = tk.Frame(scrollable_frame, bg='white', padx=20, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Title
@@ -1033,6 +1086,25 @@ class GhostPad:
         
         tk.Button(button_frame, text="Save", command=save_hotkeys, bg='#4CAF50', fg='white', font=('Arial', 10), padx=20).pack(side=tk.RIGHT, padx=(10, 0))
         tk.Button(button_frame, text="Cancel", command=cancel_hotkeys, bg='#f44336', fg='white', font=('Arial', 10), padx=20).pack(side=tk.RIGHT)
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        # Bind mouse wheel to canvas
+        canvas.bind("<MouseWheel>", _on_mousewheel)  # Windows
+        canvas.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux
+        canvas.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))   # Linux
+        
+        # Also bind to scrollable_frame and all child widgets for better scrolling
+        def bind_to_mousewheel(widget):
+            widget.bind("<MouseWheel>", _on_mousewheel)
+            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+            for child in widget.winfo_children():
+                bind_to_mousewheel(child)
+        
+        bind_to_mousewheel(scrollable_frame)
     
     def validate_hotkey(self, hotkey_str):
         """Validate hotkey format"""
@@ -1059,6 +1131,7 @@ class GhostPad:
     def show_history(self):
         """Show chat history window"""
         history_window = tk.Toplevel(self.root)
+        self.set_window_icon(history_window)
         history_window.title("Chat History")
         history_window.geometry("700x500")
         history_window.configure(bg='white')
@@ -1146,6 +1219,7 @@ class GhostPad:
     def show_help(self):
         """Show help window with README content"""
         help_window = tk.Toplevel(self.root)
+        self.set_window_icon(help_window)
         help_window.title("Help")
         help_window.geometry("800x600")
         help_window.configure(bg='white')
